@@ -21,6 +21,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage:\n");
         fprintf(stderr, "To register: %s REGISTER username -p password\n", argv[0]);
         fprintf(stderr, "To login: %s LOGIN username -p password\n", argv[0]);
+        fprintf(stderr, "To join channel: %s JOIN channel\n", argv[0]);
+        fprintf(stderr, "To join channel with key: %s JOIN channel -k key\n", argv[0]);
+        fprintf(stderr, "To join room: %s JOIN channel/room\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -37,7 +40,6 @@ int main(int argc, char *argv[]) {
 
     if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("connect");
-        close(sock);
         exit(EXIT_FAILURE);
     }
 
@@ -45,9 +47,23 @@ int main(int argc, char *argv[]) {
         register_user(sock, argv[2], argv[4]);
     } else if (strcmp(argv[1], "LOGIN") == 0 && argc == 5 && strcmp(argv[3], "-p") == 0) {
         login(sock, argv[2], argv[4]);
+    } else if (strcmp(argv[1], "JOIN") == 0 && argc >= 3) {
+        if (argc == 3) {
+            join_channel(sock, argv[2], NULL, NULL);
+        } else if (argc == 5 && strcmp(argv[3], "-k") == 0) {
+            join_channel(sock, argv[2], argv[4], argv[5]);
+        } else if (argc == 4 && strchr(argv[3], '/') != NULL) {
+            char *token = strtok(argv[3], "/");
+            char *channel = token;
+            token = strtok(NULL, "/");
+            char *room = token;
+            join_room(sock, argv[2], channel, room);
+        } else {
+            fprintf(stderr, "Invalid command format\n");
+            exit(EXIT_FAILURE);
+        }
     } else {
         fprintf(stderr, "Invalid command\n");
-        close(sock);
         exit(EXIT_FAILURE);
     }
 
@@ -83,9 +99,9 @@ void login(int sock, const char *username, const char *password) {
 void join_channel(int sock, const char *username, const char *channel, const char *key) {
     char buffer[1024];
     if (key == NULL) {
-        snprintf(buffer, sizeof(buffer), "%s JOIN %s", username, channel);
+        snprintf(buffer, sizeof(buffer), "JOIN %s", channel);
     } else {
-        snprintf(buffer, sizeof(buffer), "%s JOIN %s\nKey: %s", username, channel, key);
+        snprintf(buffer, sizeof(buffer), "JOIN %s -k %s", channel, key);
     }
     send(sock, buffer, strlen(buffer), 0);
     
@@ -97,7 +113,7 @@ void join_channel(int sock, const char *username, const char *channel, const cha
 
 void join_room(int sock, const char *username, const char *channel, const char *room) {
     char buffer[1024];
-    snprintf(buffer, sizeof(buffer), "%s JOIN %s/%s", username, channel, room);
+    snprintf(buffer, sizeof(buffer), "JOIN %s/%s", channel, room);
     send(sock, buffer, strlen(buffer), 0);
     
     memset(buffer, 0, sizeof(buffer));
@@ -141,23 +157,11 @@ void list_user(int sock, const char *channel) {
 
 void interactive_mode(int sock, const char *username) {
     char input[1024];
-    char current_channel[1024] = {0};
-    char current_room[1024] = {0};
-
     while (1) {
-        if (strlen(current_channel) > 0) {
-            if (strlen(current_room) > 0) {
-                printf("[%s/%s/%s] ", username, current_channel, current_room);
-            } else {
-                printf("[%s/%s] ", username, current_channel);
-            }
-        } else {
-            printf("[%s] ", username);
-        }
-
+        printf("[%s] ", username);
         fgets(input, sizeof(input), stdin);
         input[strcspn(input, "\n")] = '\0'; // Remove newline character from input
-
+        
         if (strcmp(input, "LIST CHANNEL") == 0) {
             list_channel(sock);
         } else if (strncmp(input, "LIST ROOM", 9) == 0) {
@@ -171,20 +175,9 @@ void interactive_mode(int sock, const char *username) {
             char *channel = strtok(args, "/");
             char *room = strtok(NULL, "/");
             if (room == NULL) {
-                char *key = NULL;
-                printf("Enter key (or press Enter to skip): ");
-                fgets(input, sizeof(input), stdin);
-                input[strcspn(input, "\n")] = '\0'; // Remove newline character from input
-                if (strlen(input) > 0) {
-                    key = input;
-                }
-                join_channel(sock, username, channel, key);
-                strcpy(current_channel, channel);
-                memset(current_room, 0, sizeof(current_room));
+                join_channel(sock, username, channel, NULL);
             } else {
                 join_room(sock, username, channel, room);
-                strcpy(current_channel, channel);
-                strcpy(current_room, room);
             }
         } else {
             fprintf(stderr, "Invalid command\n");
