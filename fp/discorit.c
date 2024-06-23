@@ -3,181 +3,191 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <pthread.h>
 
 #define PORT 8080
-#define MAX_CLIENTS 100
-#define BUFFER_SIZE 1024
 
-typedef struct {
-    int sock;
-    struct sockaddr_in address;
-    int addr_len;
-    char username[50];
-} client_t;
-
-client_t *clients[MAX_CLIENTS];
-pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-// Function declarations
-void *handle_client(void *arg);
+// Prototipe fungsi
 void register_user(int sock, const char *username, const char *password);
-void login_user(int sock, const char *username, const char *password);
+void login(int sock, const char *username, const char *password);
 void join_channel(int sock, const char *username, const char *channel, const char *key);
 void join_room(int sock, const char *username, const char *channel, const char *room);
-void list_channels(int sock, const char *username);
-void list_rooms(int sock, const char *username, const char *channel);
-void list_users(int sock, const char *username, const char *channel);
+void list_channel(int sock);
+void list_room(int sock, const char *channel);
+void list_user(int sock, const char *channel);
+void interactive_mode(int sock, const char *username);
 
-int main() {
-    int server_sock, client_sock;
-    struct sockaddr_in server_addr, client_addr;
-    pthread_t tid;
+int main(int argc, char *argv[]) {
+    if (argc < 3 || argc > 6) {
+        fprintf(stderr, "Usage:\n");
+        fprintf(stderr, "To register: %s REGISTER username -p password\n", argv[0]);
+        fprintf(stderr, "To login: %s LOGIN username -p password\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
 
-    server_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_sock < 0) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
         perror("socket");
         exit(EXIT_FAILURE);
     }
 
+    struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    if (bind(server_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("bind");
-        close(server_sock);
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("connect");
+        close(sock);
         exit(EXIT_FAILURE);
     }
 
-    if (listen(server_sock, 10) < 0) {
-        perror("listen");
-        close(server_sock);
+    if (strcmp(argv[1], "REGISTER") == 0 && argc == 5 && strcmp(argv[3], "-p") == 0) {
+        register_user(sock, argv[2], argv[4]);
+    } else if (strcmp(argv[1], "LOGIN") == 0 && argc == 5 && strcmp(argv[3], "-p") == 0) {
+        login(sock, argv[2], argv[4]);
+    } else {
+        fprintf(stderr, "Invalid command\n");
+        close(sock);
         exit(EXIT_FAILURE);
     }
 
-    printf("Server started on port %d\n", PORT);
-
-    while (1) {
-        socklen_t client_len = sizeof(client_addr);
-        client_sock = accept(server_sock, (struct sockaddr *)&client_addr, &client_len);
-
-        if (client_sock < 0) {
-            perror("accept");
-            continue;
-        }
-
-        client_t *client = (client_t *)malloc(sizeof(client_t));
-        client->sock = client_sock;
-        client->address = client_addr;
-        client->addr_len = client_len;
-
-        pthread_create(&tid, NULL, handle_client, (void *)client);
-    }
-
+    close(sock);
     return 0;
 }
 
-void *handle_client(void *arg) {
-    client_t *client = (client_t *)arg;
-    char buffer[BUFFER_SIZE];
-    int len;
-
-    while ((len = recv(client->sock, buffer, sizeof(buffer), 0)) > 0) {
-        buffer[len] = '\0';
-
-        if (strncmp(buffer, "REGISTER", 8) == 0) {
-            char username[50], password[50];
-            sscanf(buffer, "REGISTER %s -p %s", username, password);
-            register_user(client->sock, username, password);
-        } else if (strncmp(buffer, "LOGIN", 5) == 0) {
-            char username[50], password[50];
-            sscanf(buffer, "LOGIN %s -p %s", username, password);
-            strncpy(client->username, username, sizeof(client->username));
-            login_user(client->sock, username, password);
-        } else if (strncmp(buffer, "JOIN", 4) == 0) {
-            char channel[50], key[50];
-            if (sscanf(buffer, "JOIN %s Key: %s", channel, key) == 2) {
-                join_channel(client->sock, client->username, channel, key);
-            } else if (sscanf(buffer, "JOIN %s", channel) == 1) {
-                join_channel(client->sock, client->username, channel, NULL);
-            } else if (sscanf(buffer, "JOIN %s/%s", channel, key) == 2) {
-                join_room(client->sock, client->username, channel, key);
-            }
-        } else if (strncmp(buffer, "LIST CHANNEL", 12) == 0) {
-            list_channels(client->sock, client->username);
-        } else if (strncmp(buffer, "LIST ROOM", 9) == 0) {
-            char channel[50];
-            sscanf(buffer, "LIST ROOM %s", channel);
-            list_rooms(client->sock, client->username, channel);
-        } else if (strncmp(buffer, "LIST USER", 9) == 0) {
-            char channel[50];
-            sscanf(buffer, "LIST USER %s", channel);
-            list_users(client->sock, client->username, channel);
-        }
-    }
-
-    close(client->sock);
-    free(client);
-    return NULL;
-}
-
 void register_user(int sock, const char *username, const char *password) {
-    // This function should save the username and password to a database or file.
-    // For simplicity, we assume the registration is always successful.
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, sizeof(buffer), "User %s registered successfully.", username);
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "REGISTER %s -p %s", username, password);
     send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
 }
 
-void login_user(int sock, const char *username, const char *password) {
-    // This function should validate the username and password against a database or file.
-    // For simplicity, we assume the login is always successful.
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, sizeof(buffer), "User %s logged in successfully.", username);
+void login(int sock, const char *username, const char *password) {
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "LOGIN %s -p %s", username, password);
     send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
+    
+    // Panggil fungsi interactive_mode setelah login berhasil
+    interactive_mode(sock, username);
 }
 
 void join_channel(int sock, const char *username, const char *channel, const char *key) {
-    // This function should handle joining a channel. If a key is required, it should validate the key.
-    // For simplicity, we assume the join is always successful.
-    char buffer[BUFFER_SIZE];
+    char buffer[1024];
     if (key == NULL) {
-        snprintf(buffer, sizeof(buffer), "[%s] JOIN %s\n[%s/%s]", username, channel, username, channel);
+        snprintf(buffer, sizeof(buffer), "%s JOIN %s", username, channel);
     } else {
-        snprintf(buffer, sizeof(buffer), "[%s] JOIN %s\nKey: %s\n[%s/%s]", username, channel, key, username, channel);
+        snprintf(buffer, sizeof(buffer), "%s JOIN %s\nKey: %s", username, channel, key);
     }
     send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
 }
 
 void join_room(int sock, const char *username, const char *channel, const char *room) {
-    // This function should handle joining a room within a channel.
-    // For simplicity, we assume the join is always successful.
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, sizeof(buffer), "[%s/%s] JOIN %s\n[%s/%s/%s]", username, channel, room, username, channel, room);
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "%s JOIN %s/%s", username, channel, room);
     send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
 }
 
-void list_channels(int sock, const char *username) {
-    // This function should return a list of available channels.
-    // For simplicity, we use a static list of channels.
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, sizeof(buffer), "Available channels: care, bancar, qurb");
+void list_channel(int sock) {
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "LIST CHANNEL");
     send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
 }
 
-void list_rooms(int sock, const char *username, const char *channel) {
-    // This function should return a list of rooms within a channel.
-    // For simplicity, we use a static list of rooms.
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, sizeof(buffer), "Available rooms in channel %s: urban, banru, runab", channel);
+void list_room(int sock, const char *channel) {
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "LIST ROOM %s", channel);
     send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
 }
 
-void list_users(int sock, const char *username, const char *channel) {
-    // This function should return a list of users within a channel.
-    // For simplicity, we use a static list of users.
-    char buffer[BUFFER_SIZE];
-    snprintf(buffer, sizeof(buffer), "Users in channel %s: root, admin, qurbancare", channel);
+void list_user(int sock, const char *channel) {
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "LIST USER %s", channel);
     send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
+}
+
+void interactive_mode(int sock, const char *username) {
+    char input[1024];
+    char current_channel[1024] = {0};
+    char current_room[1024] = {0};
+
+    while (1) {
+        if (strlen(current_channel) > 0) {
+            if (strlen(current_room) > 0) {
+                printf("[%s/%s/%s] ", username, current_channel, current_room);
+            } else {
+                printf("[%s/%s] ", username, current_channel);
+            }
+        } else {
+            printf("[%s] ", username);
+        }
+
+        fgets(input, sizeof(input), stdin);
+        input[strcspn(input, "\n")] = '\0'; // Remove newline character from input
+
+        if (strcmp(input, "LIST CHANNEL") == 0) {
+            list_channel(sock);
+        } else if (strncmp(input, "LIST ROOM", 9) == 0) {
+            char *channel = input + 10; // Skip "LIST ROOM "
+            list_room(sock, channel);
+        } else if (strncmp(input, "LIST USER", 9) == 0) {
+            char *channel = input + 10; // Skip "LIST USER "
+            list_user(sock, channel);
+        } else if (strncmp(input, "JOIN", 4) == 0) {
+            char *args = input + 5; // Skip "JOIN "
+            char *channel = strtok(args, "/");
+            char *room = strtok(NULL, "/");
+            if (room == NULL) {
+                char *key = NULL;
+                printf("Enter key (or press Enter to skip): ");
+                fgets(input, sizeof(input), stdin);
+                input[strcspn(input, "\n")] = '\0'; // Remove newline character from input
+                if (strlen(input) > 0) {
+                    key = input;
+                }
+                join_channel(sock, username, channel, key);
+                strcpy(current_channel, channel);
+                memset(current_room, 0, sizeof(current_room));
+            } else {
+                join_room(sock, username, channel, room);
+                strcpy(current_channel, channel);
+                strcpy(current_room, room);
+            }
+        } else {
+            fprintf(stderr, "Invalid command\n");
+        }
+    }
 }
