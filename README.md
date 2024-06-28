@@ -115,5 +115,10 @@ void list_channels(int sock) {
 }
 ```
 
-ini untuk dokumentasi listchannel
+ini untuk dokumentasi list channel
+
 ![WhatsApp Image 2024-06-28 at 20 17 03_adf01b01](https://github.com/Nopitrasari/Sisop-FP-2024-MH-IT19/assets/151911480/b44e73da-aa19-4b0a-9e13-72b6127cba1d)
+
+4. LIST USER
+5. LIST ROOM
+6. JOIN
