@@ -163,7 +163,151 @@ Outputnya
 
 ![WhatsApp Image 2024-06-28 at 23 55 55_52a8d417](https://github.com/Nopitrasari/Sisop-FP-2024-MH-IT19/assets/149749135/045c3294-9d9d-4c2e-ac56-6b4ae4ac09c9)
 
+note tambahan untuk tulisan "Users in channel aji123" pada outputnya pada seharusnya hanya tulisan "Users" saja dan hanya menampilkan USER yang sudah ada, dikarenakan kurangnya ketelitian kami dalam tulisannya maka jadi seperti begitu.  
 
 5. LIST ROOM
+Fungsi ini mengirimkan pesan "LIST ROOM" ke server menggunakan socket sock, kemudian menerima respons dari server dan mencetak daftar ruangan dalam format yang sesuai ke layar.
+Untuk program membuat list room dari program discorit.c ialah 
+```
+void list_room(int sock, const char *channel) {
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "LIST ROOM %s", channel);
+    send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
+}
+```
+
+untuk program dari server.c ialah 
+
+```
+void list_rooms(int sock, const char *channel) {
+    // This function should return a list of rooms within a channel.
+    // For simplicity, we use a static list of rooms.
+    char buffer[BUFFER_SIZE];
+    snprintf(buffer, sizeof(buffer), "Available rooms in channel %s: urban, banru, runab", channel);
+    send(sock, buffer, strlen(buffer), 0);
+}
+```
+Untuk program dari monitor.c ialah 
+```
+void list_rooms(int sock, const char *channel) {
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "LIST ROOM %s", channel);
+    send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("Rooms in channel %s:\n%s\n", channel, buffer);
+}
+```
+
+Output yang dihasilkan : 
+
+![WhatsApp Image 2024-06-28 at 23 59 28_7a9efaf6](https://github.com/Nopitrasari/Sisop-FP-2024-MH-IT19/assets/149749135/7b7ccf04-d1ef-4e16-a309-74e6a825799c)
+
 
 6. JOIN
+
+Untuk kasus Join channel ataupunn join room dari kelompok kami masih belum bisa mengatasi kendala yang  ada dikarenakan kurangnya kemampuan kami. jadi, untuk programnya seperti ini : 
+
+Dari program server.c : 
+```
+void join_channel(int sock, const char *username, const char *channel, const char *key) {
+    // This function should handle joining a channel. If a key is required, it should validate the key.
+    // For simplicity, we assume the join is always successful.
+    char buffer[BUFFER_SIZE];
+    if (key == NULL) {
+        snprintf(buffer, sizeof(buffer), "[%s] JOIN %s\n[%s/%s]", username, channel, username, channel);
+    } else {
+        snprintf(buffer, sizeof(buffer), "[%s] JOIN %s\nKey: %s\n[%s/%s]", username, channel, key, username, channel);
+    }
+    send(sock, buffer, strlen(buffer), 0);
+}
+
+void join_room(int sock, const char *username, const char *channel, const char *room) {
+    // This function should handle joining a room within a channel.
+    // For simplicity, we assume the join is always successful.
+    char buffer[BUFFER_SIZE];
+    snprintf(buffer, sizeof(buffer), "[%s/%s] JOIN %s\n[%s/%s/%s]", username, channel, room, username, channel, room);
+    send(sock, buffer, strlen(buffer), 0);
+}
+```
+
+Untuk program discorit.c :
+```
+void join_channel(int sock, const char *username, const char *channel, const char *key) {
+    char buffer[1024];
+    if (key == NULL) {
+        snprintf(buffer, sizeof(buffer), "%s JOIN %s", username, channel);
+    } else {
+        snprintf(buffer, sizeof(buffer), "%s JOIN %s\nKey: %s", username, channel, key);
+    }
+    send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
+}
+
+void join_room(int sock, const char *username, const char *channel, const char *room) {
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "%s JOIN %s/%s", username, channel, room);
+    send(sock, buffer, strlen(buffer), 0);
+    
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer);
+}
+```
+
+Untuk progarm monitor.c :
+```
+else if (strncmp(input, "JOIN", 4) == 0) {
+    send(sock, input, strlen(input), 0);
+    
+    char key[50];
+    printf("Key: ");
+    fgets(key, sizeof(key), stdin);
+    key[strcspn(key, "\n")] = '\0'; // Remove newline character
+
+    if (strlen(key) > 0) {
+        send(sock, key, strlen(key), 0);
+    }
+    
+    char buffer[1024];
+    memset(buffer, 0, sizeof(buffer));
+    recv(sock, buffer, sizeof(buffer), 0);
+    
+    printf("%s\n", buffer); // Display server response to the user
+}
+```
+Outputnya :
+
+<img width="499" alt="image" src="https://github.com/Nopitrasari/Sisop-FP-2024-MH-IT19/assets/149749135/0fd430f4-caf3-4fc2-b31c-3c28cc2cd999">
+Dengan mematikan port 8080
+
+maka dari program kita sendiri baru bisa ko join channel, setelah mengalami stuck untuk join :
+
+<img width="618" alt="image" src="https://github.com/Nopitrasari/Sisop-FP-2024-MH-IT19/assets/149749135/7a1f3e67-cbe5-4dbd-98fa-ebe2dc6dd719">
+
+Dengan begitu program kami pun kembali keluar dari awal
+
+
+dalam monitor.c ini perintah join akan otomatis terkirim langsung ke server melalui send(sock, input, strlen(input), kemudian client atau pengguna tinggal memasukkan key(bila memang perlu) dan mengirim ke server. Setelah mengirim ke server, cleint atau pengguna akan menerima respon yang akan ditampilkan "printf("%s\n", buffer);" 
+
+# KENDALA 
+1. Dikarenakan kurangnya pengetahuan terkait socket programming dari kelompok kami agak cukup bingung dalam pengimplementasiannya serta bagaimana membauat chat history atau rekaman chat di dalam room yang ada. 
+2. Terkait dengan fungsi Join dari kelompok kami belum ada hasil yang bagus, dan ada terkait maslaah socket
+
+# Tambahan 
+Untuk Final Project sisop ini tugas yang diberikan mirip seperti membuat konsep SNS Server-Client dengan metode socket programming melalui bahasa C, sehingga perlu pengetahun sedikit terkait socket programming. Selain itu, dengan membuat Kosep Server-Client dengan tambahan Create, Update, Read(list), dan Delete pada pada channel maupun room yang ada sedikit rumit disertai penambahan jejak percakapan yang ada, yang mana mesti kami monitor. Terakhir, kita juga diminta untuk membuat hak Root, chennal, room bisa berbeda-beda dan diminta juga agar bisa keluar dari discorit tersebut. 
+
+Sekian, Terima kasih untuk Para Asisten Sistem Operasi pada semester 2 kali ini :) 
+Semoga lancar perkuliahannya hingga lulus 
